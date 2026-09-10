@@ -8,6 +8,18 @@ Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName PresentationCore
 Add-Type -AssemblyName WindowsBase
 
+$script:InstanceMutex = $null
+$script:OwnsInstanceMutex = $false
+if (-not $SelfTest) {
+    $createdNewInstance = $false
+    $script:InstanceMutex = [System.Threading.Mutex]::new($true, 'Local\DesktopTodoList.SingleInstance', [ref]$createdNewInstance)
+    if (-not $createdNewInstance) {
+        $script:InstanceMutex.Dispose()
+        return
+    }
+    $script:OwnsInstanceMutex = $true
+}
+
 $script:AppName = 'DesktopTodoList'
 $script:DataDirectory = Join-Path $PSScriptRoot 'data'
 $script:TaskFile = Join-Path $script:DataDirectory 'tasks.json'
@@ -100,10 +112,44 @@ function Get-TaskById([string]$Id) {
     return $script:Tasks | Where-Object { $_.Id -eq $Id } | Select-Object -First 1
 }
 
+function Get-LauncherPath {
+    $launcherPath = Join-Path $PSScriptRoot '启动桌面待办.vbs'
+    if (-not (Test-Path -LiteralPath $launcherPath)) {
+        throw '找不到启动文件。'
+    }
+    return $launcherPath
+}
+
+function Get-StartupShortcutPath {
+    $startupDirectory = [Environment]::GetFolderPath([Environment+SpecialFolder]::Startup)
+    if ([string]::IsNullOrWhiteSpace($startupDirectory)) {
+        throw '无法找到 Windows 启动文件夹。'
+    }
+    return Join-Path $startupDirectory '我的小清单.lnk'
+}
+
+function New-ApplicationShortcut([string]$ShortcutPath) {
+    $launcherPath = Get-LauncherPath
+    $wscriptPath = Join-Path $env:WINDIR 'System32\wscript.exe'
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($ShortcutPath)
+    $shortcut.TargetPath = $wscriptPath
+    $shortcut.Arguments = "`"$launcherPath`""
+    $shortcut.WorkingDirectory = $PSScriptRoot
+    $shortcut.Description = '打开我的小清单'
+    $shortcut.IconLocation = "$env:SystemRoot\System32\imageres.dll,102"
+    $shortcut.Save()
+}
+
 function Test-AutoStartEnabled {
     try {
-        $currentValue = (Get-ItemProperty -LiteralPath $script:StartupRegistryPath -Name $script:StartupValueName -ErrorAction SilentlyContinue).$($script:StartupValueName)
-        return -not [string]::IsNullOrWhiteSpace([string]$currentValue)
+        if (Test-Path -LiteralPath (Get-StartupShortcutPath)) {
+            return $true
+        }
+
+        # 兼容并迁移旧版本使用的注册表启动项。
+        $legacyValue = (Get-ItemProperty -LiteralPath $script:StartupRegistryPath -Name $script:StartupValueName -ErrorAction SilentlyContinue).$($script:StartupValueName)
+        return -not [string]::IsNullOrWhiteSpace([string]$legacyValue)
     }
     catch {
         return $false
@@ -111,17 +157,39 @@ function Test-AutoStartEnabled {
 }
 
 function Set-AutoStart([bool]$Enabled) {
+    $startupShortcutPath = Get-StartupShortcutPath
     if ($Enabled) {
-        if ([string]::IsNullOrWhiteSpace($PSCommandPath)) {
-            throw '无法确定程序路径。'
-        }
-        $command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$PSCommandPath`""
-        New-Item -Path $script:StartupRegistryPath -Force | Out-Null
-        Set-ItemProperty -LiteralPath $script:StartupRegistryPath -Name $script:StartupValueName -Value $command
+        New-ApplicationShortcut $startupShortcutPath
     }
     else {
-        Remove-ItemProperty -LiteralPath $script:StartupRegistryPath -Name $script:StartupValueName -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $startupShortcutPath -Force -ErrorAction SilentlyContinue
     }
+
+    # 清理旧版本的注册表启动项，避免开机时重复打开。
+    Remove-ItemProperty -LiteralPath $script:StartupRegistryPath -Name $script:StartupValueName -ErrorAction SilentlyContinue
+}
+
+function Get-DesktopShortcutPath {
+    $desktopDirectory = [Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)
+    if ([string]::IsNullOrWhiteSpace($desktopDirectory)) {
+        throw '无法找到桌面文件夹。'
+    }
+    return Join-Path $desktopDirectory '我的小清单.lnk'
+}
+
+function Test-DesktopShortcutExists {
+    try {
+        return Test-Path -LiteralPath (Get-DesktopShortcutPath)
+    }
+    catch {
+        return $false
+    }
+}
+
+function New-DesktopShortcut {
+    $shortcutPath = Get-DesktopShortcutPath
+    New-ApplicationShortcut $shortcutPath
+    return $shortcutPath
 }
 
 [xml]$xaml = @'
@@ -473,6 +541,9 @@ function Set-AutoStart([bool]$Enabled) {
                     <CheckBox x:Name="AutoStartCheckBox" Content="每天开机陪着我"
                               VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource MutedBrush}"/>
                     <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                        <Button x:Name="CreateShortcutButton" Margin="0,0,7,0" Padding="8,4"
+                                Style="{StaticResource SoftButtonStyle}" Content="☆ 桌面"
+                                FontSize="11" ToolTip="添加桌面快捷方式"/>
                         <ComboBox x:Name="ThemeComboBox" SelectedIndex="0"
                                   Style="{StaticResource ThemeComboBoxStyle}" ToolTip="选择配色">
                             <ComboBoxItem Tag="sakura"><Ellipse Width="20" Height="20" Fill="#E58AA8" ToolTip="樱花粉"/></ComboBoxItem>
@@ -507,6 +578,7 @@ $EmptyState = $window.FindName('EmptyState')
 $SummaryText = $window.FindName('SummaryText')
 $ClearCompletedButton = $window.FindName('ClearCompletedButton')
 $AutoStartCheckBox = $window.FindName('AutoStartCheckBox')
+$CreateShortcutButton = $window.FindName('CreateShortcutButton')
 $FooterBorder = $window.FindName('FooterBorder')
 $ThemeComboBox = $window.FindName('ThemeComboBox')
 
@@ -920,7 +992,19 @@ for ($themeIndex = 0; $themeIndex -lt $ThemeComboBox.Items.Count; $themeIndex++)
 Apply-Theme $initialTheme
 
 $PinButton.IsChecked = $window.Topmost
-$AutoStartCheckBox.IsChecked = Test-AutoStartEnabled
+$autoStartEnabled = Test-AutoStartEnabled
+if ($autoStartEnabled -and -not $SelfTest) {
+    try {
+        # 自动刷新启动快捷方式的目标路径，并完成旧版注册表配置迁移。
+        Set-AutoStart $true
+    }
+    catch {
+        $autoStartEnabled = $false
+    }
+}
+$AutoStartCheckBox.IsChecked = $autoStartEnabled
+$AutoStartCheckBox.ToolTip = if ($autoStartEnabled) { '已开启：登录 Windows 后自动启动' } else { '已关闭：点击开启开机自动启动' }
+$CreateShortcutButton.Content = if (Test-DesktopShortcutExists) { '✓ 已添加' } else { '☆ 桌面' }
 
 $TitleBar.Add_MouseLeftButtonDown({
     param($sender, $eventArgs)
@@ -937,6 +1021,16 @@ $PinButton.Add_Unchecked({ $window.Topmost = $false; Save-Settings })
 $MinimizeButton.Add_Click({ $window.WindowState = 'Minimized' })
 $CloseButton.Add_Click({ $window.Close() })
 $AddButton.Add_Click({ Add-NewTask })
+$CreateShortcutButton.Add_Click({
+    try {
+        $shortcutPath = New-DesktopShortcut
+        $CreateShortcutButton.Content = '✓ 已添加'
+        $CreateShortcutButton.ToolTip = "快捷方式已添加到：$shortcutPath"
+    }
+    catch {
+        [System.Windows.MessageBox]::Show("无法创建桌面快捷方式：`n$($_.Exception.Message)", '我的小清单') | Out-Null
+    }
+})
 $ThemeComboBox.Add_SelectionChanged({
     if ($null -eq $ThemeComboBox.SelectedItem) {
         return
@@ -988,6 +1082,12 @@ $ClearCompletedButton.Add_Click({
 $AutoStartCheckBox.Add_Click({
     try {
         Set-AutoStart ([bool]$AutoStartCheckBox.IsChecked)
+        $AutoStartCheckBox.ToolTip = if ($AutoStartCheckBox.IsChecked) {
+            '已开启：登录 Windows 后自动启动'
+        }
+        else {
+            '已关闭：点击开启开机自动启动'
+        }
     }
     catch {
         $AutoStartCheckBox.IsChecked = Test-AutoStartEnabled
@@ -998,6 +1098,14 @@ $AutoStartCheckBox.Add_Click({
 $window.Add_Closing({
     Save-Tasks
     Save-Settings
+})
+
+$window.Add_Closed({
+    if ($script:OwnsInstanceMutex -and $null -ne $script:InstanceMutex) {
+        try { $script:InstanceMutex.ReleaseMutex() } catch { }
+        $script:InstanceMutex.Dispose()
+        $script:OwnsInstanceMutex = $false
+    }
 })
 
 $window.Add_ContentRendered({
