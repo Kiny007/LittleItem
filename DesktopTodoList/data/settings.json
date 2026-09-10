@@ -1,7 +1,8 @@
 ﻿{
-    "Left":  1326,
-    "Top":  1.3333333333333333,
+    "Left":  1210,
+    "Top":  173.33333333333331,
     "Width":  380,
     "Height":  540,
-    "Topmost":  false
+    "Topmost":  false,
+    "Theme":  "mint"
 }

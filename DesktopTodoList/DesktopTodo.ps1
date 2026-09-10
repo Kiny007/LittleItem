@@ -91,6 +91,7 @@ function Save-Settings {
         Width   = [double]$bounds.Width
         Height  = [double]$bounds.Height
         Topmost = [bool]$window.Topmost
+        Theme   = [string]$script:CurrentThemeKey
     }
     Set-Content -LiteralPath $script:SettingsFile -Value (ConvertTo-Json $settings) -Encoding UTF8
 }
@@ -233,6 +234,78 @@ function Set-AutoStart([bool]$Enabled) {
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="ThemeComboBoxItemStyle" TargetType="ComboBoxItem">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="ItemBubble" CornerRadius="12" Margin="2" Padding="5"
+                                Background="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ItemBubble" Property="Background" Value="#70FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemBubble" Property="Background" Value="#A0FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="ThemeComboBoxStyle" TargetType="ComboBox">
+            <Setter Property="Width" Value="42"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Background" Value="#30FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#66FFFFFF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="ItemContainerStyle" Value="{StaticResource ThemeComboBoxItemStyle}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton x:Name="ThemeToggle" Focusable="False" ClickMode="Press"
+                                          IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="ThemePill" CornerRadius="14"
+                                                Background="{Binding Background, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                BorderBrush="{Binding BorderBrush, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                BorderThickness="{Binding BorderThickness, RelativeSource={RelativeSource AncestorType=ComboBox}}">
+                                            <TextBlock Text="🎨" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                       FontFamily="Segoe UI Emoji" FontSize="14"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="ThemePill" Property="Background" Value="#70FFFFFF"/>
+                                            </Trigger>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="ThemePill" Property="Background" Value="#88FFFFFF"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   Placement="Bottom" PlacementTarget="{Binding ElementName=ThemeToggle}"
+                                   AllowsTransparency="True" PopupAnimation="Fade" StaysOpen="False">
+                                <Border Margin="0,5,0,0" Padding="4" CornerRadius="14"
+                                        Background="#D9FFFFFF" BorderBrush="#88FFFFFF" BorderThickness="1">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.16" Color="#6B587F"/>
+                                    </Border.Effect>
+                                    <ScrollViewer>
+                                        <ItemsPresenter/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style TargetType="TextBox">
             <Setter Property="FontFamily" Value="Microsoft YaHei UI"/>
             <Setter Property="FontSize" Value="14"/>
@@ -250,6 +323,24 @@ function Set-AutoStart([bool]$Enabled) {
             <Setter Property="Padding" Value="7,4"/>
             <Setter Property="TextAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="DeadlineBorder" CornerRadius="10"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="DeadlineBorder" Property="BorderBrush" Value="#E88EAD"/>
+                                <Setter TargetName="DeadlineBorder" Property="Background" Value="#DFFFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
         <Style TargetType="CheckBox">
             <Setter Property="FontFamily" Value="Microsoft YaHei UI"/>
@@ -286,7 +377,7 @@ function Set-AutoStart([bool]$Enabled) {
         </Style>
     </Window.Resources>
 
-    <Border CornerRadius="24" Background="{StaticResource MainSurfaceBrush}" BorderBrush="#AFFFFFFF" BorderThickness="1">
+    <Border x:Name="MainBorder" CornerRadius="24" Background="{StaticResource MainSurfaceBrush}" BorderBrush="#AFFFFFFF" BorderThickness="1">
         <Border.Effect>
             <DropShadowEffect BlurRadius="30" ShadowDepth="5" Opacity="0.22" Color="#6B587F"/>
         </Border.Effect>
@@ -321,7 +412,7 @@ function Set-AutoStart([bool]$Enabled) {
             </Grid>
 
             <Grid Grid.Row="1" Margin="18,3,18,15">
-                <Border CornerRadius="18" Background="#CAFFFFFF" BorderBrush="#A8FFFFFF" BorderThickness="1">
+                <Border x:Name="NewTaskBorder" CornerRadius="18" Background="#CAFFFFFF" BorderBrush="#A8FFFFFF" BorderThickness="1">
                     <Border.Effect>
                         <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.10" Color="#7F6A93"/>
                     </Border.Effect>
@@ -343,14 +434,9 @@ function Set-AutoStart([bool]$Enabled) {
                         <StackPanel Grid.Row="1" Grid.Column="0" Margin="15,0,4,12" Orientation="Horizontal">
                             <TextBlock Text="⏰ DDL" Margin="1,0,8,0" VerticalAlignment="Center"
                                        FontFamily="Microsoft YaHei UI" FontSize="11" Foreground="#8C8398"/>
-                            <Grid Width="135" Height="27">
-                                <TextBox x:Name="NewDeadlineTextBox" Style="{StaticResource DeadlineTextBoxStyle}"
-                                         ToolTip="输入格式：YYYY-MM-DD" MaxLength="10"/>
-                                <TextBlock x:Name="NewDeadlineHint" Text="YYYY-MM-DD"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                                           IsHitTestVisible="False" FontFamily="Segoe UI" FontSize="10"
-                                           Foreground="#AAA0B6"/>
-                            </Grid>
+                            <TextBox x:Name="NewDeadlineTextBox" Width="135" Height="27"
+                                     Style="{StaticResource DeadlineTextBoxStyle}"
+                                     ToolTip="填写截止日期" MaxLength="10"/>
                         </StackPanel>
                         <Button x:Name="AddButton" Grid.RowSpan="2" Grid.Column="1" Margin="5,7,7,7" Padding="0"
                                 Style="{StaticResource PrimaryButtonStyle}" Background="#998B7FD6"
@@ -382,9 +468,21 @@ function Set-AutoStart([bool]$Enabled) {
                 </Grid>
             </Border>
 
-            <Border Grid.Row="4" Background="#55FFFFFF" CornerRadius="0,0,24,24">
-                <CheckBox x:Name="AutoStartCheckBox" Margin="20,12" Content="每天开机陪着我"
-                          FontSize="12" Foreground="{StaticResource MutedBrush}"/>
+            <Border x:Name="FooterBorder" Grid.Row="4" Background="#55FFFFFF" CornerRadius="0,0,24,24">
+                <Grid Margin="20,9">
+                    <CheckBox x:Name="AutoStartCheckBox" Content="每天开机陪着我"
+                              VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource MutedBrush}"/>
+                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                        <ComboBox x:Name="ThemeComboBox" SelectedIndex="0"
+                                  Style="{StaticResource ThemeComboBoxStyle}" ToolTip="选择配色">
+                            <ComboBoxItem Tag="sakura"><Ellipse Width="20" Height="20" Fill="#E58AA8" ToolTip="樱花粉"/></ComboBoxItem>
+                            <ComboBoxItem Tag="lavender"><Ellipse Width="20" Height="20" Fill="#8B7FD6" ToolTip="薰衣草紫"/></ComboBoxItem>
+                            <ComboBoxItem Tag="mint"><Ellipse Width="20" Height="20" Fill="#6FBF9C" ToolTip="薄荷绿"/></ComboBoxItem>
+                            <ComboBoxItem Tag="sky"><Ellipse Width="20" Height="20" Fill="#6BA9D6" ToolTip="晴空蓝"/></ComboBoxItem>
+                            <ComboBoxItem Tag="cream"><Ellipse Width="20" Height="20" Fill="#D99A61" ToolTip="奶油橙"/></ComboBoxItem>
+                        </ComboBox>
+                    </StackPanel>
+                </Grid>
             </Border>
         </Grid>
     </Border>
@@ -394,6 +492,7 @@ function Set-AutoStart([bool]$Enabled) {
 $reader = New-Object System.Xml.XmlNodeReader $xaml
 $window = [Windows.Markup.XamlReader]::Load($reader)
 
+$MainBorder = $window.FindName('MainBorder')
 $TitleBar = $window.FindName('TitleBar')
 $PinButton = $window.FindName('PinButton')
 $MinimizeButton = $window.FindName('MinimizeButton')
@@ -401,17 +500,80 @@ $CloseButton = $window.FindName('CloseButton')
 $NewTaskTextBox = $window.FindName('NewTaskTextBox')
 $InputHint = $window.FindName('InputHint')
 $NewDeadlineTextBox = $window.FindName('NewDeadlineTextBox')
-$NewDeadlineHint = $window.FindName('NewDeadlineHint')
+$NewTaskBorder = $window.FindName('NewTaskBorder')
 $AddButton = $window.FindName('AddButton')
 $TaskPanel = $window.FindName('TaskPanel')
 $EmptyState = $window.FindName('EmptyState')
 $SummaryText = $window.FindName('SummaryText')
 $ClearCompletedButton = $window.FindName('ClearCompletedButton')
 $AutoStartCheckBox = $window.FindName('AutoStartCheckBox')
+$FooterBorder = $window.FindName('FooterBorder')
+$ThemeComboBox = $window.FindName('ThemeComboBox')
+
+$script:Themes = @{
+    sakura = [pscustomobject]@{
+        SurfaceStart = '#DDFEF1F6'; SurfaceEnd = '#DDF8E5EC'; Accent = '#E58AA8'
+        Input = '#D9FFF8FB'; Footer = '#66FFF1F6'
+        Cards = @('#DDFCE8F0', '#DFFFF1F5', '#DDF7E2EB', '#DDFFE9E1', '#DDF4E8F5')
+        Borders = @('#99EEA9C0', '#99E7B9C8', '#99DFA6BA', '#99ECBDAE', '#99CFB3D8')
+    }
+    lavender = [pscustomobject]@{
+        SurfaceStart = '#DDFEF7FB'; SurfaceEnd = '#DDEFEAFF'; Accent = '#8B7FD6'
+        Input = '#D9FFFFFF'; Footer = '#55FFFFFF'
+        Cards = @('#DDFCEEF5', '#DDEFEAFF', '#DDEBF7FF', '#DDFFF5D8', '#DDE7F8EF')
+        Borders = @('#99F1B5C9', '#99C9BDEB', '#99B8DCEA', '#99EAD99B', '#99B8DFC9')
+    }
+    mint = [pscustomobject]@{
+        SurfaceStart = '#DDEFFAF5'; SurfaceEnd = '#DDE3F4EC'; Accent = '#6FBF9C'
+        Input = '#D9F8FFFB'; Footer = '#66E8F8F0'
+        Cards = @('#DDE3F7ED', '#DDEAF9F4', '#DDF3FBEA', '#DDE1F5F2', '#DDFFF6DE')
+        Borders = @('#999DD5BA', '#99AFDCCB', '#99BEDCA8', '#999ED5CE', '#99E2D29D')
+    }
+    sky = [pscustomobject]@{
+        SurfaceStart = '#DDECF8FE'; SurfaceEnd = '#DDE1EFFA'; Accent = '#6BA9D6'
+        Input = '#D9F7FCFF'; Footer = '#66E9F5FC'
+        Cards = @('#DDE2F3FC', '#DDEBF7FF', '#DDE1EDF9', '#DDF0F7FF', '#DDE8F1FC')
+        Borders = @('#999BCBE5', '#99ACD2E8', '#999EBFDA', '#99B5CEE4', '#99A8C2DD')
+    }
+    cream = [pscustomobject]@{
+        SurfaceStart = '#DDFFF7E9'; SurfaceEnd = '#DDFBE9DA'; Accent = '#D99A61'
+        Input = '#D9FFFCF5'; Footer = '#66FFF1DF'
+        Cards = @('#DDFFF0D8', '#DDFFE8D8', '#DDFAF3D8', '#DDFFEEDC', '#DDF5E7D8')
+        Borders = @('#99E4BD86', '#99E5AF8D', '#99D6C18A', '#99E7B991', '#99CDB497')
+    }
+}
+$script:CurrentThemeKey = 'lavender'
+$script:ActiveCardColors = @($script:Themes.lavender.Cards)
+$script:ActiveCardBorders = @($script:Themes.lavender.Borders)
+
+function Apply-Theme([string]$ThemeKey) {
+    if (-not $script:Themes.ContainsKey($ThemeKey)) {
+        $ThemeKey = 'lavender'
+    }
+
+    $theme = $script:Themes[$ThemeKey]
+    $script:CurrentThemeKey = $ThemeKey
+    $script:ActiveCardColors = @($theme.Cards)
+    $script:ActiveCardBorders = @($theme.Borders)
+
+    $gradient = New-Object System.Windows.Media.LinearGradientBrush
+    $gradient.StartPoint = [System.Windows.Point]::new(0, 0)
+    $gradient.EndPoint = [System.Windows.Point]::new(1, 1)
+    [void]$gradient.GradientStops.Add((New-Object System.Windows.Media.GradientStop -Property @{
+        Color = [System.Windows.Media.ColorConverter]::ConvertFromString($theme.SurfaceStart); Offset = 0
+    }))
+    [void]$gradient.GradientStops.Add((New-Object System.Windows.Media.GradientStop -Property @{
+        Color = [System.Windows.Media.ColorConverter]::ConvertFromString($theme.SurfaceEnd); Offset = 1
+    }))
+
+    $MainBorder.Background = $gradient
+    $AddButton.Background = [System.Windows.Media.BrushConverter]::new().ConvertFromString($theme.Accent)
+    $NewTaskBorder.Background = [System.Windows.Media.BrushConverter]::new().ConvertFromString($theme.Input)
+    $FooterBorder.Background = [System.Windows.Media.BrushConverter]::new().ConvertFromString($theme.Footer)
+}
 
 function Update-InputHint {
     $InputHint.Visibility = if ([string]::IsNullOrEmpty($NewTaskTextBox.Text)) { 'Visible' } else { 'Collapsed' }
-    $NewDeadlineHint.Visibility = if ([string]::IsNullOrEmpty($NewDeadlineTextBox.Text)) { 'Visible' } else { 'Collapsed' }
 }
 
 function Update-Summary {
@@ -464,7 +626,7 @@ function ConvertTo-NormalizedDeadline([string]$Text) {
 function Set-DeadlineAppearance($DeadlineTextBox, [bool]$Completed) {
     $DeadlineTextBox.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#8C8398')
     $DeadlineTextBox.BorderBrush = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#80CFC7DB')
-    $DeadlineTextBox.ToolTip = '填写格式：YYYY-MM-DD；留空表示无 DDL'
+    $DeadlineTextBox.ToolTip = '填写或清除 DDL'
     $DeadlineTextBox.Opacity = if ($Completed) { 0.65 } else { 1 }
 
     if ([string]::IsNullOrWhiteSpace($DeadlineTextBox.Text)) {
@@ -475,7 +637,7 @@ function Set-DeadlineAppearance($DeadlineTextBox, [bool]$Completed) {
     if ($null -eq $normalizedDeadline) {
         $DeadlineTextBox.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#E45C7B')
         $DeadlineTextBox.BorderBrush = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#E45C7B')
-        $DeadlineTextBox.ToolTip = '日期格式无效，请填写 YYYY-MM-DD'
+        $DeadlineTextBox.ToolTip = '日期无效，请重新填写'
         return
     }
 
@@ -511,8 +673,8 @@ function Render-Tasks {
     $TaskPanel.Children.Clear()
     $EmptyState.Visibility = if ($script:Tasks.Count -eq 0) { 'Visible' } else { 'Collapsed' }
 
-    $cardColors = @('#DDFCEEF5', '#DDEFEAFF', '#DDEBF7FF', '#DDFFF5D8', '#DDE7F8EF')
-    $cardBorders = @('#99F1B5C9', '#99C9BDEB', '#99B8DCEA', '#99EAD99B', '#99B8DFC9')
+    $cardColors = $script:ActiveCardColors
+    $cardBorders = $script:ActiveCardBorders
     $taskIndex = 0
     foreach ($task in @($script:Tasks)) {
         $rowBorder = New-Object System.Windows.Controls.Border
@@ -745,6 +907,18 @@ if ($null -ne $settings) {
     $window.Topmost = [bool]$settings.Topmost
 }
 
+$initialTheme = 'lavender'
+if ($null -ne $settings -and $settings.Theme -and $script:Themes.ContainsKey([string]$settings.Theme)) {
+    $initialTheme = [string]$settings.Theme
+}
+for ($themeIndex = 0; $themeIndex -lt $ThemeComboBox.Items.Count; $themeIndex++) {
+    if ([string]$ThemeComboBox.Items[$themeIndex].Tag -eq $initialTheme) {
+        $ThemeComboBox.SelectedIndex = $themeIndex
+        break
+    }
+}
+Apply-Theme $initialTheme
+
 $PinButton.IsChecked = $window.Topmost
 $AutoStartCheckBox.IsChecked = Test-AutoStartEnabled
 
@@ -763,6 +937,16 @@ $PinButton.Add_Unchecked({ $window.Topmost = $false; Save-Settings })
 $MinimizeButton.Add_Click({ $window.WindowState = 'Minimized' })
 $CloseButton.Add_Click({ $window.Close() })
 $AddButton.Add_Click({ Add-NewTask })
+$ThemeComboBox.Add_SelectionChanged({
+    if ($null -eq $ThemeComboBox.SelectedItem) {
+        return
+    }
+
+    $selectedTheme = [string]$ThemeComboBox.SelectedItem.Tag
+    Apply-Theme $selectedTheme
+    Render-Tasks
+    Save-Settings
+})
 $NewTaskTextBox.Add_TextChanged({ Update-InputHint })
 $NewDeadlineTextBox.Add_TextChanged({ Update-InputHint })
 $NewDeadlineTextBox.Add_LostKeyboardFocus({
